@@ -301,7 +301,7 @@ export function toAnthropicRequest(body: CommonRequest) {
           {
             type: "tool_result",
             tool_use_id: (m as any).tool_call_id,
-            content: (m as any).content,
+            content: (m as any).content || " ",
             ...cc(),
           },
         ],
