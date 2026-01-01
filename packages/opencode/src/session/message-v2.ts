@@ -11,8 +11,11 @@ import { ProviderTransform } from "@/provider/transform"
 import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
 import { type SystemError } from "bun"
+import { Log } from "../util/log"
 
 export namespace MessageV2 {
+  const log = Log.create({ service: "message" })
+
   export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
   export const AbortedError = NamedError.create("MessageAbortedError", z.object({ message: z.string() }))
   export const AuthError = NamedError.create(
@@ -554,8 +557,13 @@ export namespace MessageV2 {
   export const parts = fn(Identifier.schema("message"), async (messageID) => {
     const result = [] as MessageV2.Part[]
     for (const item of await Storage.list(["part", messageID])) {
-      const read = await Storage.read<MessageV2.Part>(item)
-      result.push(read)
+      try {
+        const read = await Storage.read<MessageV2.Part>(item)
+        result.push(read)
+      } catch (e) {
+        log.warn("skipping corrupt part file", { key: item.join("/"), error: e instanceof Error ? e.message : String(e) })
+        continue
+      }
     }
     result.sort((a, b) => (a.id > b.id ? 1 : -1))
     return result

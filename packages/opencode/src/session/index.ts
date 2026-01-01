@@ -56,6 +56,7 @@ export namespace Session {
         .optional(),
       title: z.string(),
       version: z.string(),
+      cost: z.number().optional(),
       time: z.object({
         created: z.number(),
         updated: z.number(),
@@ -278,7 +279,12 @@ export namespace Session {
   export async function* list() {
     const project = Instance.project
     for (const item of await Storage.list(["session", project.id])) {
-      yield Storage.read<Info>(item)
+      try {
+        yield await Storage.read<Info>(item)
+      } catch (e) {
+        log.warn("skipping corrupt session file", { key: item.join("/"), error: e instanceof Error ? e.message : String(e) })
+        continue
+      }
     }
   }
 
@@ -286,9 +292,14 @@ export namespace Session {
     const project = Instance.project
     const result = [] as Session.Info[]
     for (const item of await Storage.list(["session", project.id])) {
-      const session = await Storage.read<Info>(item)
-      if (session.parentID !== parentID) continue
-      result.push(session)
+      try {
+        const session = await Storage.read<Info>(item)
+        if (session.parentID !== parentID) continue
+        result.push(session)
+      } catch (e) {
+        log.warn("skipping corrupt session file", { key: item.join("/"), error: e instanceof Error ? e.message : String(e) })
+        continue
+      }
     }
     return result
   })
@@ -393,6 +404,7 @@ export namespace Session {
         : (input.usage.inputTokens ?? 0) - cachedInputTokens
       const safe = (value: number) => {
         if (!Number.isFinite(value)) return 0
+        if (value < 0) return 0
         return value
       }
 
