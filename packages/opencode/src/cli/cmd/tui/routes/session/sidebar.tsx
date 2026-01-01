@@ -41,7 +41,13 @@ export function Sidebar(props: { sessionID: string }) {
   )
 
   const cost = createMemo(() => {
-    const total = messages().reduce((sum, x) => sum + (x.role === "assistant" ? x.cost : 0), 0)
+    // Sum cost from current session messages
+    let total = messages().reduce((sum, x) => sum + (x.role === "assistant" ? x.cost : 0), 0)
+    // Add cost from child sessions (subagents) using their stored cost field
+    const childSessions = sync.data.session.filter((s) => s.parentID === props.sessionID)
+    for (const child of childSessions) {
+      total += child.cost ?? 0
+    }
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",

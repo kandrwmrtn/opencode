@@ -36,10 +36,16 @@ export function Header() {
   const shareEnabled = createMemo(() => sync.data.config.share !== "disabled")
 
   const cost = createMemo(() => {
-    const total = pipe(
+    // Sum cost from current session messages
+    let total = pipe(
       messages(),
       sumBy((x) => (x.role === "assistant" ? x.cost : 0)),
     )
+    // Add cost from child sessions (subagents) using their stored cost field
+    const childSessions = sync.data.session.filter((s) => s.parentID === route.sessionID)
+    for (const child of childSessions) {
+      total += child.cost ?? 0
+    }
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",

@@ -1,17 +1,48 @@
-import { createMemo, Show } from "solid-js"
+import { createMemo, createSignal, createEffect, Show } from "solid-js"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { ProgressCircle } from "@opencode-ai/ui/progress-circle"
 import { useSync } from "@/context/sync"
+import { useSDK } from "@/context/sdk"
 import { useParams } from "@solidjs/router"
 import { AssistantMessage } from "@opencode-ai/sdk/v2/client"
 
 export function SessionContextUsage() {
   const sync = useSync()
+  const sdk = useSDK()
   const params = useParams()
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
 
+  // Track child session costs fetched from server
+  const [childCosts, setChildCosts] = createSignal<Record<string, number>>({})
+
+  // Fetch child session messages to calculate their costs
+  createEffect(() => {
+    if (!params.id) return
+    const childSessions = sync.data.session.filter((s) => s.parentID === params.id)
+    for (const child of childSessions) {
+      // Skip if we already have this child's cost
+      if (childCosts()[child.id] !== undefined) continue
+      // Fetch messages for this child session
+      sdk.client.session.messages({ sessionID: child.id }).then((res) => {
+        const msgs = res.data ?? []
+        // Note: response is { info: Message, parts: Part[] }[], so access .info for message data
+        const cost = msgs.reduce((sum, m) => sum + (m.info.role === "assistant" ? m.info.cost : 0), 0)
+        setChildCosts((prev) => ({ ...prev, [child.id]: cost }))
+      }).catch(() => {
+        // If fetch fails, set cost to 0
+        setChildCosts((prev) => ({ ...prev, [child.id]: 0 }))
+      })
+    }
+  })
+
   const cost = createMemo(() => {
-    const total = messages().reduce((sum, x) => sum + (x.role === "assistant" ? x.cost : 0), 0)
+    // Sum cost from current session
+    let total = messages().reduce((sum, x) => sum + (x.role === "assistant" ? x.cost : 0), 0)
+    // Also sum cost from child sessions (subagents)
+    const costs = childCosts()
+    for (const childCost of Object.values(costs)) {
+      total += childCost
+    }
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",

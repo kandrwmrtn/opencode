@@ -261,6 +261,12 @@ export namespace SessionProcessor {
                     cost: usage.cost,
                   })
                   await Session.updateMessage(input.assistantMessage)
+                  // Update session's accumulated cost
+                  if (usage.cost > 0) {
+                    await Session.update(input.sessionID, (draft) => {
+                      draft.cost = (draft.cost ?? 0) + usage.cost
+                    })
+                  }
                   if (snapshot) {
                     const patch = await Snapshot.patch(snapshot)
                     if (patch.files.length) {
